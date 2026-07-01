@@ -4,6 +4,14 @@
 
 这个项目是个人工具，不包含账号、云同步、社区、统计打卡或复杂任务管理功能。
 
+## 界面截图
+
+![首次安装状态](docs/images/home-empty.png)
+
+![新建模块空表单](docs/images/module-empty-form.png)
+
+![诊断调试面板](docs/images/debug-panel.png)
+
 ## 初始状态
 
 公开版 APK 首次安装后不会内置任何个人模块：
