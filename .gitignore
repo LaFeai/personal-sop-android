@@ -1,0 +1,13 @@
+build/
+*.apk
+*.idsig
+*.class
+*.dex
+*.jar
+local.properties
+.idea/
+.gradle/
+.keystore/
+DEVELOPMENT_NOTES.md
+UX_HANDOFF.md
+GITHUB_HANDOFF.md
