@@ -6,11 +6,11 @@
 
 ## 界面截图
 
-![首次安装状态](docs/images/home-empty.png)
+<img src="docs/images/home-empty.png" alt="首次安装状态" width="260">
 
-![新建模块空表单](docs/images/module-empty-form.png)
+<img src="docs/images/module-empty-form.png" alt="新建模块空表单" width="260">
 
-![诊断调试面板](docs/images/debug-panel.png)
+<img src="docs/images/debug-panel.png" alt="诊断调试面板" width="260">
 
 ## 初始状态
 
@@ -19,7 +19,6 @@
 - 全局 Token 为空，需要用户自己填写。
 - 模块数量为 0。
 - 首页只提供 `+` 添加入口。
-- 不包含作者的真实习惯、提醒时间、频率、提醒文案或动作清单。
 
 ## 通知链路
 
@@ -29,6 +28,7 @@
 需要固定执行的动作
   -> App 按模块和周期安排系统精确闹钟
   -> 到点发送全能消息推送 Bark 通知
+  -> 手机允许全能消息推送 Bark 通知
   -> 手机通知同步到手环震动
   -> 用户完成后在 App 中确认
   -> 当前周期停止持续提醒
@@ -67,7 +67,7 @@ http://www.ggsuper.com.cn/push/api/v1/sendMsg_New.php
 
 开始时间和结束时间定义提醒生效的时间窗口，提醒间隔定义这个窗口内重复提醒的频率。
 
-例如时间窗口是 17:00-19:00，提醒间隔是 5 分钟，App 会在这个 2 小时窗口内按 5 分钟频率重复提醒，而不是只提醒一次。提醒间隔不应由开始/结束时间自动计算。
+例如时间窗口是 17:00-19:00，提醒间隔是 5 分钟，App 会在这个 2 小时窗口内按 5 分钟频率重复提醒，而不是只提醒一次。
 
 ## 适合的 SOP 场景
 
