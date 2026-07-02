@@ -6,11 +6,11 @@
 
 ## 界面截图
 
-<img src="docs/images/home-empty.png" alt="首次安装状态" width="260">
-
-<img src="docs/images/module-empty-form.png" alt="新建模块空表单" width="260">
-
-<img src="docs/images/debug-panel.png" alt="诊断调试面板" width="260">
+<p align="center">
+  <img src="docs/images/home-empty.png" alt="首次安装状态" width="30%">
+  <img src="docs/images/module-empty-form.png" alt="新建模块空表单" width="30%">
+  <img src="docs/images/debug-panel.png" alt="诊断调试面板" width="30%">
+</p>
 
 ## 初始状态
 
