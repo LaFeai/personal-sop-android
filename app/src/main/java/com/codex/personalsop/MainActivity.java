@@ -175,12 +175,12 @@ public final class MainActivity extends Activity {
         }
         moduleEditorLayout.addView(daysRow, matchWrap());
 
-        startTimeInput = timeInput("17:00");
-        moduleEditorLayout.addView(label("开始时间（HH:mm）"));
+        startTimeInput = timeInput("");
+        moduleEditorLayout.addView(label("开始时间"));
         moduleEditorLayout.addView(startTimeInput, matchWrap());
 
-        endTimeInput = timeInput("23:00");
-        moduleEditorLayout.addView(label("结束时间（HH:mm）"));
+        endTimeInput = timeInput("");
+        moduleEditorLayout.addView(label("结束时间"));
         moduleEditorLayout.addView(endTimeInput, matchWrap());
 
         intervalInput = input("");
@@ -522,8 +522,25 @@ public final class MainActivity extends Activity {
         boolean scheduled = ReminderScheduler.scheduleAll(this);
         loadSettings();
         selectModule(module.id);
-        setStatus(scheduled ? "已保存。" : "已保存，但未能安排提醒。请检查精确闹钟权限。");
+        String saveStatus = saveStatusMessage(module, scheduled);
+        ReminderConfig.appendLog(this, scheduled ? "INFO" : "ERROR", saveStatus);
+        setStatus(saveStatus);
         refreshStatus();
+    }
+
+    private String saveStatusMessage(SopModule module, boolean scheduled) {
+        if (!module.enabled) {
+            return "已保存 [" + module.name + "]，当前模块未启用。";
+        }
+        if (!scheduled) {
+            return "已保存 [" + module.name + "]，但未能安排提醒。请检查精确闹钟权限。";
+        }
+        long next = ReminderConfig.prefs(this).getLong(ReminderConfig.KEY_NEXT_TRIGGER, 0L);
+        if (next <= 0L) {
+            return "已保存 [" + module.name + "]，但没有找到下一次提醒时间。";
+        }
+        return "已保存 [" + module.name + "]，下次提醒："
+                + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date(next));
     }
 
     private void testBark() {
@@ -911,7 +928,7 @@ public final class MainActivity extends Activity {
                     Math.max(0, Math.min(Integer.parseInt(parts[1]), 59))
             };
         } catch (RuntimeException ex) {
-            return new int[]{17, 0};
+            return new int[]{0, 0};
         }
     }
 
@@ -988,7 +1005,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showTimePicker(final EditText target) {
-        int hour = 17;
+        int hour = 0;
         int minute = 0;
         String value = normalizeTimeInput(target.getText().toString());
         if (isValidTime(value)) {

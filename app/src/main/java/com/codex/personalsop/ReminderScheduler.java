@@ -98,6 +98,9 @@ final class ReminderScheduler {
         if (module.testMode) {
             return nowMillis + Math.max(1, module.intervalMinutes) * 60_000L;
         }
+        if (!hasConfiguredTimeWindow(module)) {
+            return nowMillis + 24L * 60L * 60L * 1000L;
+        }
 
         ZoneId zone = ZoneId.systemDefault();
         LocalDateTime now = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(nowMillis), zone);
@@ -146,6 +149,9 @@ final class ReminderScheduler {
     }
 
     static String occurrenceKey(long nowMillis, SopModule module) {
+        if (!hasConfiguredTimeWindow(module)) {
+            return null;
+        }
         ZoneId zone = ZoneId.systemDefault();
         LocalDateTime now = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(nowMillis), zone);
         LocalDateTime start = occurrenceStart(now, module);
@@ -190,6 +196,17 @@ final class ReminderScheduler {
         }
         int dayIndex = date.getDayOfWeek().getValue() - 1;
         return (module.daysOfWeek & (1 << dayIndex)) != 0;
+    }
+
+    private static boolean hasConfiguredTimeWindow(SopModule module) {
+        return module.startHour >= 0
+                && module.startHour <= 23
+                && module.startMinute >= 0
+                && module.startMinute <= 59
+                && module.endHour >= 0
+                && module.endHour <= 23
+                && module.endMinute >= 0
+                && module.endMinute <= 59;
     }
 
     private static LocalDateTime occurrenceStart(LocalDateTime now, SopModule module) {
@@ -270,4 +287,3 @@ final class ReminderScheduler {
         return flags;
     }
 }
-
