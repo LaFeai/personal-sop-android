@@ -101,17 +101,17 @@ final class ReminderScheduler {
 
         ZoneId zone = ZoneId.systemDefault();
         LocalDateTime now = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(nowMillis), zone);
+        LocalDateTime activeStart = occurrenceStart(now, module);
+        if (context != null && activeStart != null && SopModuleStore.isCompleted(context, module, nowMillis)) {
+            return nextStartAfter(activeStart, module).atZone(zone).toInstant().toEpochMilli();
+        }
+
         if (module.requiresCompletion) {
-            LocalDateTime activeStart = occurrenceStart(now, module);
             if (activeStart != null) {
-                boolean completed = context != null && SopModuleStore.isCompleted(context, module, nowMillis);
-                if (!completed) {
-                    return now.plusMinutes(Math.max(1, module.intervalMinutes))
-                            .atZone(zone)
-                            .toInstant()
-                            .toEpochMilli();
-                }
-                return nextStartAfter(activeStart, module).atZone(zone).toInstant().toEpochMilli();
+                return now.plusMinutes(Math.max(1, module.intervalMinutes))
+                        .atZone(zone)
+                        .toInstant()
+                        .toEpochMilli();
             }
             return nextStartAfter(now.minusMinutes(1), module).atZone(zone).toInstant().toEpochMilli();
         }

@@ -811,13 +811,16 @@ public final class MainActivity extends Activity {
                 moduleText.append(" / 下次 ")
                         .append(new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(new Date(moduleNext)));
             }
+            boolean completed = SopModuleStore.isCompleted(this, module, now);
             if (module.requiresCompletion) {
                 moduleText.append(" / 手动完成");
-                if (SopModuleStore.isCompleted(this, module, now)) {
+                if (completed) {
                     moduleText.append("：当前周期已完成");
                 } else if (ReminderScheduler.occurrenceKey(now, module) != null) {
                     moduleText.append("：当前周期待完成");
                 }
+            } else if (completed) {
+                moduleText.append(" / 当前周期已完成");
             }
             if (module.usesChecklist) {
                 moduleText.append(" / 清单 ")
