@@ -25,6 +25,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.NumberPicker;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -174,11 +175,11 @@ public final class MainActivity extends Activity {
         }
         moduleEditorLayout.addView(daysRow, matchWrap());
 
-        startTimeInput = input("17:00");
+        startTimeInput = timeInput("17:00");
         moduleEditorLayout.addView(label("开始时间（HH:mm）"));
         moduleEditorLayout.addView(startTimeInput, matchWrap());
 
-        endTimeInput = input("23:00");
+        endTimeInput = timeInput("23:00");
         moduleEditorLayout.addView(label("结束时间（HH:mm）"));
         moduleEditorLayout.addView(endTimeInput, matchWrap());
 
@@ -718,12 +719,14 @@ public final class MainActivity extends Activity {
             setStatus("已启用动作清单，请至少填写一个清单项。");
             return null;
         }
-        if (!isValidTime(startTimeInput.getText().toString().trim()) || !isValidTime(endTimeInput.getText().toString().trim())) {
+        String startTime = normalizeTimeInput(startTimeInput.getText().toString());
+        String endTime = normalizeTimeInput(endTimeInput.getText().toString());
+        if (!isValidTime(startTime) || !isValidTime(endTime)) {
             setStatus("时间格式请使用 HH:mm，例如 17:00。");
             return null;
         }
-        int[] start = parseTime(startTimeInput.getText().toString().trim());
-        int[] end = parseTime(endTimeInput.getText().toString().trim());
+        int[] start = parseTime(startTime);
+        int[] end = parseTime(endTime);
         module.startHour = start[0];
         module.startMinute = start[1];
         module.endHour = end[0];
@@ -888,6 +891,15 @@ public final class MainActivity extends Activity {
         return parsed[0] >= 0 && parsed[0] <= 23 && parsed[1] >= 0 && parsed[1] <= 59;
     }
 
+    private String normalizeTimeInput(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim()
+                .replace('：', ':')
+                .replace(" ", "");
+    }
+
     private int[] parseTime(String value) {
         try {
             String[] parts = value.split(":");
@@ -958,6 +970,93 @@ public final class MainActivity extends Activity {
         return editText;
     }
 
+    private EditText timeInput(String hint) {
+        EditText editText = input(hint);
+        editText.setInputType(InputType.TYPE_NULL);
+        editText.setFocusable(false);
+        editText.setCursorVisible(false);
+        editText.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showTimePicker((EditText) view);
+            }
+        });
+        return editText;
+    }
+
+    private void showTimePicker(final EditText target) {
+        int hour = 17;
+        int minute = 0;
+        String value = normalizeTimeInput(target.getText().toString());
+        if (isValidTime(value)) {
+            int[] parsed = parseTime(value);
+            hour = parsed[0];
+            minute = parsed[1];
+        }
+
+        LinearLayout pickerRow = new LinearLayout(this);
+        pickerRow.setOrientation(LinearLayout.HORIZONTAL);
+        pickerRow.setGravity(Gravity.CENTER);
+        pickerRow.setPadding(dp(12), dp(8), dp(12), 0);
+
+        final NumberPicker hourPicker = timeNumberPicker(0, 23, hour);
+        final NumberPicker minutePicker = timeNumberPicker(0, 59, minute);
+
+        TextView separator = new TextView(this);
+        separator.setText(":");
+        separator.setTextSize(28);
+        separator.setGravity(Gravity.CENTER);
+
+        pickerRow.addView(hourPicker, pickerLayout());
+        pickerRow.addView(separator, new LinearLayout.LayoutParams(dp(36), ViewGroup.LayoutParams.WRAP_CONTENT));
+        pickerRow.addView(minutePicker, pickerLayout());
+
+        new AlertDialog.Builder(this)
+                .setTitle("选择时间")
+                .setView(pickerRow)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        target.setText(formatTime(hourPicker.getValue(), minutePicker.getValue()));
+                    }
+                })
+                .show();
+    }
+
+    private NumberPicker timeNumberPicker(int min, int max, int value) {
+        NumberPicker picker = new NumberPicker(this);
+        picker.setMinValue(min);
+        picker.setMaxValue(max);
+        picker.setValue(value);
+        picker.setWrapSelectorWheel(true);
+        picker.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        disableNumberPickerTextInput(picker);
+        picker.setFormatter(new NumberPicker.Formatter() {
+            @Override
+            public String format(int number) {
+                return String.format(Locale.getDefault(), "%02d", number);
+            }
+        });
+        return picker;
+    }
+
+    private void disableNumberPickerTextInput(NumberPicker picker) {
+        for (int i = 0; i < picker.getChildCount(); i++) {
+            View child = picker.getChildAt(i);
+            if (child instanceof EditText) {
+                EditText input = (EditText) child;
+                input.setInputType(InputType.TYPE_NULL);
+                input.setFocusable(false);
+                input.setCursorVisible(false);
+            }
+        }
+    }
+
+    private LinearLayout.LayoutParams pickerLayout() {
+        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+    }
+
     private EditText multilineInput(String hint) {
         EditText editText = new EditText(this);
         editText.setHint(hint);
@@ -1000,4 +1099,3 @@ public final class MainActivity extends Activity {
         }
     }
 }
-

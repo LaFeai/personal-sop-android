@@ -1,5 +1,6 @@
 package com.codex.personalsop;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -28,15 +29,50 @@ final class BarkClient {
             return new Result(false, "提醒文字未填写");
         }
 
+        String token = endpoint.trim();
+        String safeTitle = title.trim();
+        String safeMessage = message.trim();
+        Result jsonResult = sendJson(token, safeTitle, safeMessage);
+        if (jsonResult.ok || !looksLikeInvalidData(jsonResult.message)) {
+            return jsonResult;
+        }
+        Result formResult = sendMultipart(token, safeTitle, safeMessage);
+        if (formResult.ok) {
+            return formResult;
+        }
+        return new Result(false, jsonResult.message + "；表单重试：" + formResult.message);
+    }
+
+    private static Result sendJson(String token, String title, String message) {
+        try {
+            byte[] body = buildJson(token, title, message).getBytes("UTF-8");
+            return post(body, "application/json", "JSON");
+        } catch (IOException ex) {
+            return new Result(false, ex.getMessage() == null ? "Bark JSON 请求失败" : ex.getMessage());
+        }
+    }
+
+    private static Result sendMultipart(String token, String title, String message) {
+        String boundary = "----PersonalSopBark" + System.currentTimeMillis();
+        try {
+            byte[] body = buildMultipart(boundary, token, title, message);
+            return post(body, "multipart/form-data; boundary=" + boundary, "表单");
+        } catch (IOException ex) {
+            return new Result(false, ex.getMessage() == null ? "Bark 表单请求失败" : ex.getMessage());
+        }
+    }
+
+    private static Result post(byte[] body, String contentType, String label) throws IOException {
         HttpURLConnection connection = null;
         try {
             URL url = new URL(API_URL);
-            byte[] body = buildJson(endpoint.trim(), title.trim(), message).getBytes("UTF-8");
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
             connection.setRequestMethod("POST");
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            connection.setRequestProperty("Content-Type", contentType);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setFixedLengthStreamingMode(body.length);
             connection.setDoOutput(true);
             OutputStream outputStream = connection.getOutputStream();
             outputStream.write(body);
@@ -46,9 +82,7 @@ final class BarkClient {
             if (code >= 200 && code < 300 && isSuccess(response)) {
                 return new Result(true, "Bark 已发送");
             }
-            return new Result(false, "Bark 返回 HTTP " + code + ": " + response);
-        } catch (IOException ex) {
-            return new Result(false, ex.getMessage() == null ? "Bark 请求失败" : ex.getMessage());
+            return new Result(false, "Bark " + label + " 返回 HTTP " + code + ": " + response);
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -67,10 +101,35 @@ final class BarkClient {
                 + "}";
     }
 
+    private static byte[] buildMultipart(String boundary, String token, String title, String message) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        writePart(output, boundary, "title", title);
+        writePart(output, boundary, "msg", message);
+        writePart(output, boundary, "url", "");
+        writePart(output, boundary, "token", token);
+        writePart(output, boundary, "issecure", "0");
+        writePart(output, boundary, "sender", title);
+        output.write(("--" + boundary + "--\r\n").getBytes("UTF-8"));
+        return output.toByteArray();
+    }
+
+    private static void writePart(ByteArrayOutputStream output, String boundary, String name, String value) throws IOException {
+        output.write(("--" + boundary + "\r\n").getBytes("UTF-8"));
+        output.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n").getBytes("UTF-8"));
+        output.write(value.getBytes("UTF-8"));
+        output.write("\r\n".getBytes("UTF-8"));
+    }
+
     private static boolean isSuccess(String response) {
         return response != null
-                && (response.contains("\"code\":\"80000000\"")
+                && (response.contains("\"code\":\"1\"")
+                || response.contains("\"code\":1")
+                || response.contains("\"code\":\"80000000\"")
                 || response.contains("\"code\":80000000"));
+    }
+
+    private static boolean looksLikeInvalidData(String message) {
+        return message != null && message.contains("无效数据");
     }
 
     private static String readResponse(HttpURLConnection connection, int code) throws IOException {
@@ -126,4 +185,3 @@ final class BarkClient {
         }
     }
 }
-
