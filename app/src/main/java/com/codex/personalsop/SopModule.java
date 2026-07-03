@@ -10,6 +10,7 @@ import java.util.List;
 final class SopModule {
     static final String CYCLE_DAILY = "daily";
     static final String CYCLE_WEEKLY = "weekly";
+    static final String CYCLE_MONTHLY = "monthly";
     static final int ALL_DAYS = 0b1111111;
     static final int UNSET_TIME = -1;
     static final int UNSET_INTERVAL = 0;
@@ -20,6 +21,8 @@ final class SopModule {
     boolean enabled;
     String cycleType;
     int daysOfWeek;
+    int monthlyWeekOrdinal;
+    int monthlyDayOfWeek;
     int startHour;
     int startMinute;
     int endHour;
@@ -41,6 +44,8 @@ final class SopModule {
         module.enabled = false;
         module.cycleType = CYCLE_DAILY;
         module.daysOfWeek = 0;
+        module.monthlyWeekOrdinal = 1;
+        module.monthlyDayOfWeek = 0;
         module.startHour = UNSET_TIME;
         module.startMinute = 0;
         module.endHour = UNSET_TIME;
@@ -65,6 +70,8 @@ final class SopModule {
         object.put("enabled", enabled);
         object.put("cycleType", cycleType);
         object.put("daysOfWeek", daysOfWeek);
+        object.put("monthlyWeekOrdinal", monthlyWeekOrdinal);
+        object.put("monthlyDayOfWeek", monthlyDayOfWeek);
         object.put("startHour", startHour);
         object.put("startMinute", startMinute);
         object.put("endHour", endHour);
@@ -92,6 +99,10 @@ final class SopModule {
         module.enabled = object.optBoolean("enabled", false);
         module.cycleType = object.optString("cycleType", fallback.cycleType);
         module.daysOfWeek = object.optInt("daysOfWeek", fallback.daysOfWeek);
+        module.monthlyWeekOrdinal = clampMonthlyWeekOrdinal(
+                object.optInt("monthlyWeekOrdinal", fallback.monthlyWeekOrdinal)
+        );
+        module.monthlyDayOfWeek = clamp(object.optInt("monthlyDayOfWeek", fallback.monthlyDayOfWeek), 0, 6);
         module.startHour = clamp(object.optInt("startHour", fallback.startHour), UNSET_TIME, 23);
         module.startMinute = clamp(object.optInt("startMinute", fallback.startMinute), 0, 59);
         module.endHour = clamp(object.optInt("endHour", fallback.endHour), UNSET_TIME, 23);
@@ -110,7 +121,7 @@ final class SopModule {
             }
         }
         module.testMode = object.optBoolean("testMode", false);
-        if (!CYCLE_WEEKLY.equals(module.cycleType)) {
+        if (!CYCLE_WEEKLY.equals(module.cycleType) && !CYCLE_MONTHLY.equals(module.cycleType)) {
             module.cycleType = CYCLE_DAILY;
         }
         return module;
@@ -129,6 +140,13 @@ final class SopModule {
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(value, max));
+    }
+
+    private static int clampMonthlyWeekOrdinal(int value) {
+        if (value < 1 || value > 4) {
+            return 4;
+        }
+        return value;
     }
 }
 

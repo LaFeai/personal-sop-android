@@ -22,6 +22,14 @@ public final class ReminderReceiver extends BroadcastReceiver {
             ReminderConfig.appendLog(context, "WARN", "[" + module.name + "] 闹钟已唤醒，但模块未启用");
             return;
         }
+        if (!module.testMode && ReminderScheduler.occurrenceKey(System.currentTimeMillis(), module) == null) {
+            ReminderConfig.prefs(context).edit()
+                    .putString(ReminderConfig.KEY_LAST_TRIGGER_STATUS, time + " [" + module.name + "] 已唤醒，但当前不在允许周期内")
+                    .apply();
+            ReminderConfig.appendLog(context, "WARN", "[" + module.name + "] 闹钟已唤醒，但当前不在允许周期内，跳过发送");
+            ReminderScheduler.scheduleNext(context, module);
+            return;
+        }
         ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] 闹钟已唤醒，开始发送 Bark");
 
         PendingResult pending = goAsync();

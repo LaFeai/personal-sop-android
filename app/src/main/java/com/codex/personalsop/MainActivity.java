@@ -52,6 +52,10 @@ public final class MainActivity extends Activity {
     private Button selectAllDaysButton;
     private LinearLayout daysRow;
     private final CheckBox[] dayInputs = new CheckBox[7];
+    private TextView monthlyOrdinalLabel;
+    private Spinner monthlyOrdinalInput;
+    private TextView monthlyDayLabel;
+    private Spinner monthlyDayInput;
     private EditText startTimeInput;
     private EditText endTimeInput;
     private EditText intervalInput;
@@ -135,7 +139,7 @@ public final class MainActivity extends Activity {
         moduleEditorLayout.addView(checklistItemsInput, matchWrap());
 
         cycleInput = new Spinner(this);
-        ArrayAdapter<String> cycleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"每天", "每周"});
+        ArrayAdapter<String> cycleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"每天", "每周", "每月"});
         cycleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         cycleInput.setAdapter(cycleAdapter);
         cycleInput.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -174,6 +178,22 @@ public final class MainActivity extends Activity {
             daysRow.addView(dayInputs[i], matchWrap());
         }
         moduleEditorLayout.addView(daysRow, matchWrap());
+
+        monthlyOrdinalLabel = label("每月第几个");
+        moduleEditorLayout.addView(monthlyOrdinalLabel);
+        monthlyOrdinalInput = new Spinner(this);
+        ArrayAdapter<String> monthlyOrdinalAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"第1个", "第2个", "第3个", "第4个"});
+        monthlyOrdinalAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        monthlyOrdinalInput.setAdapter(monthlyOrdinalAdapter);
+        moduleEditorLayout.addView(monthlyOrdinalInput, matchWrap());
+
+        monthlyDayLabel = label("每月星期几");
+        moduleEditorLayout.addView(monthlyDayLabel);
+        monthlyDayInput = new Spinner(this);
+        ArrayAdapter<String> monthlyDayAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"周一", "周二", "周三", "周四", "周五", "周六", "周日"});
+        monthlyDayAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        monthlyDayInput.setAdapter(monthlyDayAdapter);
+        moduleEditorLayout.addView(monthlyDayInput, matchWrap());
 
         startTimeInput = timeInput("");
         moduleEditorLayout.addView(label("开始时间"));
@@ -465,10 +485,12 @@ public final class MainActivity extends Activity {
         messageInput.setText(module.message == null ? "" : module.message);
         usesChecklistInput.setChecked(module.usesChecklist);
         checklistItemsInput.setText(checklistText(module));
-        cycleInput.setSelection(SopModule.CYCLE_WEEKLY.equals(module.cycleType) ? 1 : 0);
+        cycleInput.setSelection(cycleSelection(module.cycleType));
         for (int i = 0; i < dayInputs.length; i++) {
             dayInputs[i].setChecked((module.daysOfWeek & (1 << i)) != 0);
         }
+        monthlyOrdinalInput.setSelection(monthlyOrdinalSelection(module.monthlyWeekOrdinal));
+        monthlyDayInput.setSelection(clamp(module.monthlyDayOfWeek, 0, 6));
         startTimeInput.setText(formatTimeOrEmpty(module.startHour, module.startMinute));
         endTimeInput.setText(formatTimeOrEmpty(module.endHour, module.endMinute));
         enabledInput.setChecked(module.enabled);
@@ -487,12 +509,21 @@ public final class MainActivity extends Activity {
             checklistItemsInput.setVisibility(checklistVisibility);
         }
         if (daysLabel != null && daysRow != null && cycleInput != null) {
-            int weeklyVisibility = cycleInput.getSelectedItemPosition() == 1 ? View.VISIBLE : View.GONE;
+            int selectedCycle = cycleInput.getSelectedItemPosition();
+            int weeklyVisibility = selectedCycle == 1 ? View.VISIBLE : View.GONE;
+            int monthlyVisibility = selectedCycle == 2 ? View.VISIBLE : View.GONE;
             daysLabel.setVisibility(weeklyVisibility);
             if (selectAllDaysButton != null) {
                 selectAllDaysButton.setVisibility(weeklyVisibility);
             }
             daysRow.setVisibility(weeklyVisibility);
+            if (monthlyOrdinalLabel != null && monthlyOrdinalInput != null
+                    && monthlyDayLabel != null && monthlyDayInput != null) {
+                monthlyOrdinalLabel.setVisibility(monthlyVisibility);
+                monthlyOrdinalInput.setVisibility(monthlyVisibility);
+                monthlyDayLabel.setVisibility(monthlyVisibility);
+                monthlyDayInput.setVisibility(monthlyVisibility);
+            }
         }
     }
 
@@ -535,11 +566,11 @@ public final class MainActivity extends Activity {
         if (!scheduled) {
             return "已保存 [" + module.name + "]，但未能安排提醒。请检查精确闹钟权限。";
         }
-        long next = ReminderConfig.prefs(this).getLong(ReminderConfig.KEY_NEXT_TRIGGER, 0L);
+        long next = ReminderScheduler.nextTriggerMillis(this, System.currentTimeMillis(), module);
         if (next <= 0L) {
             return "已保存 [" + module.name + "]，但没有找到下一次提醒时间。";
         }
-        return "已保存 [" + module.name + "]，下次提醒："
+        return "已保存 [" + module.name + "]，" + cycleText(module) + "，下次提醒："
                 + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date(next));
     }
 
@@ -715,8 +746,17 @@ public final class MainActivity extends Activity {
         module.usesChecklist = usesChecklistInput.isChecked();
         module.checklistItems = parseChecklistItems();
         module.enabled = enabledInput.isChecked();
-        module.cycleType = cycleInput.getSelectedItemPosition() == 1 ? SopModule.CYCLE_WEEKLY : SopModule.CYCLE_DAILY;
+        int cyclePosition = cycleInput.getSelectedItemPosition();
+        if (cyclePosition == 1) {
+            module.cycleType = SopModule.CYCLE_WEEKLY;
+        } else if (cyclePosition == 2) {
+            module.cycleType = SopModule.CYCLE_MONTHLY;
+        } else {
+            module.cycleType = SopModule.CYCLE_DAILY;
+        }
         module.daysOfWeek = SopModule.CYCLE_WEEKLY.equals(module.cycleType) ? readDays() : SopModule.ALL_DAYS;
+        module.monthlyWeekOrdinal = monthlyOrdinalFromSelection(monthlyOrdinalInput.getSelectedItemPosition());
+        module.monthlyDayOfWeek = clamp(monthlyDayInput.getSelectedItemPosition(), 0, 6);
         module.requiresCompletion = requiresCompletionInput.isChecked() || module.usesChecklist;
         module.testMode = testModeInput.isChecked();
 
@@ -863,20 +903,53 @@ public final class MainActivity extends Activity {
         if (SopModule.CYCLE_DAILY.equals(module.cycleType)) {
             return "每天";
         }
-        String[] labels = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+        if (SopModule.CYCLE_MONTHLY.equals(module.cycleType)) {
+            return "每月" + monthlyOrdinalText(module.monthlyWeekOrdinal) + dayLabel(module.monthlyDayOfWeek);
+        }
         StringBuilder builder = new StringBuilder("每周");
         if (module.daysOfWeek == 0) {
             return "每周（未选择）";
         }
-        for (int i = 0; i < labels.length; i++) {
+        for (int i = 0; i < dayInputs.length; i++) {
             if ((module.daysOfWeek & (1 << i)) != 0) {
                 if (builder.length() > 2) {
                     builder.append("、");
                 }
-                builder.append(labels[i]);
+                builder.append(dayLabel(i));
             }
         }
         return builder.toString();
+    }
+
+    private int cycleSelection(String cycleType) {
+        if (SopModule.CYCLE_WEEKLY.equals(cycleType)) {
+            return 1;
+        }
+        if (SopModule.CYCLE_MONTHLY.equals(cycleType)) {
+            return 2;
+        }
+        return 0;
+    }
+
+    private int monthlyOrdinalFromSelection(int selection) {
+        return clamp(selection + 1, 1, 4);
+    }
+
+    private int monthlyOrdinalSelection(int ordinal) {
+        return clamp(ordinal, 1, 4) - 1;
+    }
+
+    private String monthlyOrdinalText(int ordinal) {
+        return "第" + clamp(ordinal, 1, 4) + "个";
+    }
+
+    private String dayLabel(int index) {
+        String[] labels = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+        return labels[clamp(index, 0, labels.length - 1)];
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(value, max));
     }
 
     private void requestNotificationPermissionIfNeeded() {

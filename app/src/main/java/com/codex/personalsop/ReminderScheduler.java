@@ -15,6 +15,8 @@ import java.util.List;
 final class ReminderScheduler {
     static final String EXTRA_MODULE_ID = "module_id";
     private static final int REQUEST_CODE_BASE = 1001;
+    private static final int FUTURE_SEARCH_DAYS = 370;
+    private static final int MONTHLY_SEARCH_MONTHS = 24;
     private static final String ACTION_REMIND = "com.codex.personalsop.REMIND";
 
     private ReminderScheduler() {
@@ -111,41 +113,40 @@ final class ReminderScheduler {
 
         if (module.requiresCompletion) {
             if (activeStart != null) {
-                return now.plusMinutes(Math.max(1, module.intervalMinutes))
-                        .atZone(zone)
-                        .toInstant()
-                        .toEpochMilli();
+                LocalDateTime activeEnd = occurrenceEnd(activeStart, module);
+                LocalDateTime next = now.plusMinutes(Math.max(1, module.intervalMinutes));
+                if (!next.isBefore(activeEnd)) {
+                    next = nextStartAfter(activeStart, module);
+                }
+                return next.atZone(zone).toInstant().toEpochMilli();
             }
             return nextStartAfter(now.minusMinutes(1), module).atZone(zone).toInstant().toEpochMilli();
         }
 
-        LocalDate date = now.toLocalDate();
-        for (int offset = 0; offset <= 14; offset++) {
-            LocalDate candidateDate = date.plusDays(offset);
-            if (!isAllowedDay(candidateDate, module)) {
-                continue;
-            }
+        LocalDate searchDate = now.toLocalDate();
+        LocalDate maxDate = searchDate.plusDays(FUTURE_SEARCH_DAYS);
+        LocalDate candidateDate = nextAllowedDateOnOrAfter(searchDate, module);
+        while (candidateDate != null && !candidateDate.isAfter(maxDate)) {
             LocalDateTime start = LocalDateTime.of(candidateDate, LocalTime.of(module.startHour, module.startMinute));
-            LocalDateTime end = LocalDateTime.of(candidateDate, LocalTime.of(module.endHour, module.endMinute));
-            if (!end.isAfter(start)) {
-                end = start.plusMinutes(Math.max(1, module.intervalMinutes));
-            }
+            LocalDateTime end = occurrenceEnd(start, module);
             LocalDateTime next;
             if (now.isBefore(start)) {
                 next = start;
-            } else if (now.isAfter(end) || now.isEqual(end)) {
+            } else if (!now.isBefore(end)) {
+                candidateDate = nextAllowedDateAfter(candidateDate, module);
                 continue;
             } else {
                 long minutesSinceStart = java.time.Duration.between(start, now).toMinutes();
                 long slots = (minutesSinceStart / Math.max(1, module.intervalMinutes)) + 1;
                 next = start.plusMinutes(slots * Math.max(1, module.intervalMinutes));
-                if (next.isAfter(end)) {
+                if (!next.isBefore(end)) {
+                    candidateDate = nextAllowedDateAfter(candidateDate, module);
                     continue;
                 }
             }
             return next.atZone(zone).toInstant().toEpochMilli();
         }
-        return nowMillis + 24L * 60L * 60L * 1000L;
+        return nextStartAfter(now, module).atZone(zone).toInstant().toEpochMilli();
     }
 
     static String occurrenceKey(long nowMillis, SopModule module) {
@@ -176,13 +177,13 @@ final class ReminderScheduler {
         LocalDateTime next;
         if (now.isBefore(start)) {
             next = start;
-        } else if (now.isAfter(end) || now.isEqual(end)) {
+        } else if (!now.isBefore(end)) {
             next = start.plusDays(1);
         } else {
             long minutesSinceStart = java.time.Duration.between(start, now).toMinutes();
             long slots = (minutesSinceStart / safeInterval) + 1;
             next = start.plusMinutes(slots * safeInterval);
-            if (next.isAfter(end)) {
+            if (!next.isBefore(end)) {
                 next = start.plusDays(1);
             }
         }
@@ -194,8 +195,77 @@ final class ReminderScheduler {
         if (SopModule.CYCLE_DAILY.equals(module.cycleType)) {
             return true;
         }
-        int dayIndex = date.getDayOfWeek().getValue() - 1;
-        return (module.daysOfWeek & (1 << dayIndex)) != 0;
+        if (SopModule.CYCLE_WEEKLY.equals(module.cycleType)) {
+            int dayIndex = date.getDayOfWeek().getValue() - 1;
+            return (module.daysOfWeek & (1 << dayIndex)) != 0;
+        }
+        if (SopModule.CYCLE_MONTHLY.equals(module.cycleType)) {
+            return isMonthlyAllowedDay(date, module);
+        }
+        return false;
+    }
+
+    private static boolean isMonthlyAllowedDay(LocalDate date, SopModule module) {
+        LocalDate monthlyDate = monthlyDateInMonth(date.withDayOfMonth(1), module);
+        return date.equals(monthlyDate);
+    }
+
+    private static LocalDate nextAllowedDateOnOrAfter(LocalDate date, SopModule module) {
+        if (SopModule.CYCLE_MONTHLY.equals(module.cycleType)) {
+            return nextMonthlyDateOnOrAfter(date, module);
+        }
+        LocalDate maxDate = date.plusDays(FUTURE_SEARCH_DAYS);
+        LocalDate candidate = date;
+        while (!candidate.isAfter(maxDate)) {
+            if (isAllowedDay(candidate, module)) {
+                return candidate;
+            }
+            candidate = candidate.plusDays(1);
+        }
+        return null;
+    }
+
+    private static LocalDate nextAllowedDateAfter(LocalDate date, SopModule module) {
+        if (SopModule.CYCLE_MONTHLY.equals(module.cycleType)) {
+            return nextMonthlyDateAfter(date, module);
+        }
+        return nextAllowedDateOnOrAfter(date.plusDays(1), module);
+    }
+
+    private static LocalDate nextMonthlyDateAfter(LocalDate after, SopModule module) {
+        return nextMonthlyDateOnOrAfter(after.plusDays(1), module);
+    }
+
+    private static LocalDate nextMonthlyDateOnOrAfter(LocalDate date, SopModule module) {
+        LocalDate monthStart = date.withDayOfMonth(1);
+        for (int offset = 0; offset <= MONTHLY_SEARCH_MONTHS; offset++) {
+            LocalDate candidate = monthlyDateInMonth(monthStart.plusMonths(offset), module);
+            if (candidate != null && !candidate.isBefore(date)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static LocalDate monthlyDateInMonth(LocalDate monthDate, SopModule module) {
+        LocalDate monthStart = monthDate.withDayOfMonth(1);
+        int targetDayOfWeek = safeMonthlyDayOfWeek(module) + 1;
+        int ordinal = safeMonthlyWeekOrdinal(module);
+
+        int daysUntilTarget = (targetDayOfWeek - monthStart.getDayOfWeek().getValue() + 7) % 7;
+        LocalDate candidate = monthStart.plusDays(daysUntilTarget + (long) (ordinal - 1) * 7L);
+        return candidate.getMonth() == monthStart.getMonth() ? candidate : null;
+    }
+
+    private static int safeMonthlyWeekOrdinal(SopModule module) {
+        if (module.monthlyWeekOrdinal < 1 || module.monthlyWeekOrdinal > 4) {
+            return 4;
+        }
+        return module.monthlyWeekOrdinal;
+    }
+
+    private static int safeMonthlyDayOfWeek(SopModule module) {
+        return Math.max(0, Math.min(module.monthlyDayOfWeek, 6));
     }
 
     private static boolean hasConfiguredTimeWindow(SopModule module) {
@@ -210,30 +280,36 @@ final class ReminderScheduler {
     }
 
     private static LocalDateTime occurrenceStart(LocalDateTime now, SopModule module) {
-        for (int offset = 0; offset <= 14; offset++) {
-            LocalDate candidateDate = now.toLocalDate().minusDays(offset);
-            if (!isAllowedDay(candidateDate, module)) {
-                continue;
-            }
-            LocalDateTime start = LocalDateTime.of(candidateDate, LocalTime.of(module.startHour, module.startMinute));
-            if (!start.isAfter(now)) {
-                return start;
-            }
+        LocalDate candidateDate = now.toLocalDate();
+        if (!isAllowedDay(candidateDate, module)) {
+            return null;
+        }
+        LocalDateTime start = LocalDateTime.of(candidateDate, LocalTime.of(module.startHour, module.startMinute));
+        LocalDateTime end = occurrenceEnd(start, module);
+        if ((now.isEqual(start) || now.isAfter(start)) && now.isBefore(end)) {
+            return start;
         }
         return null;
     }
 
+    private static LocalDateTime occurrenceEnd(LocalDateTime start, SopModule module) {
+        LocalDateTime end = LocalDateTime.of(start.toLocalDate(), LocalTime.of(module.endHour, module.endMinute));
+        LocalDateTime dayEnd = start.toLocalDate().plusDays(1).atStartOfDay();
+        if (!end.isAfter(start)) {
+            end = dayEnd;
+        }
+        return end.isBefore(dayEnd) ? end : dayEnd;
+    }
+
     private static LocalDateTime nextStartAfter(LocalDateTime after, SopModule module) {
-        LocalDate startDate = after.toLocalDate();
-        for (int offset = 0; offset <= 14; offset++) {
-            LocalDate candidateDate = startDate.plusDays(offset);
-            if (!isAllowedDay(candidateDate, module)) {
-                continue;
-            }
+        LocalDate maxDate = after.toLocalDate().plusDays(FUTURE_SEARCH_DAYS);
+        LocalDate candidateDate = nextAllowedDateOnOrAfter(after.toLocalDate(), module);
+        while (candidateDate != null && !candidateDate.isAfter(maxDate)) {
             LocalDateTime candidate = LocalDateTime.of(candidateDate, LocalTime.of(module.startHour, module.startMinute));
             if (candidate.isAfter(after)) {
                 return candidate;
             }
+            candidateDate = nextAllowedDateAfter(candidateDate, module);
         }
         return after.plusDays(1);
     }
