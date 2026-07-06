@@ -23,6 +23,7 @@ import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.DatePicker;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.NumberPicker;
@@ -31,6 +32,9 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -56,11 +60,15 @@ public final class MainActivity extends Activity {
     private Spinner monthlyOrdinalInput;
     private TextView monthlyDayLabel;
     private Spinner monthlyDayInput;
+    private TextView intervalDaysLabel;
+    private EditText intervalDaysInput;
+    private TextView intervalStartDateLabel;
+    private EditText intervalStartDateInput;
     private EditText startTimeInput;
     private EditText endTimeInput;
     private EditText intervalInput;
     private CheckBox enabledInput;
-    private CheckBox requiresCompletionInput;
+    private Button completeButton;
     private CheckBox testModeInput;
     private TextView feedbackView;
     private Button debugToggleButton;
@@ -88,6 +96,8 @@ public final class MainActivity extends Activity {
         ScrollView scrollView = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setFocusableInTouchMode(true);
+        root.requestFocus();
         int padding = dp(20);
         root.setPadding(padding, padding, padding, padding);
         scrollView.addView(root);
@@ -139,7 +149,7 @@ public final class MainActivity extends Activity {
         moduleEditorLayout.addView(checklistItemsInput, matchWrap());
 
         cycleInput = new Spinner(this);
-        ArrayAdapter<String> cycleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"每天", "每周", "每月"});
+        ArrayAdapter<String> cycleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"每天", "每周", "每月", "每隔N天"});
         cycleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         cycleInput.setAdapter(cycleAdapter);
         cycleInput.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -195,6 +205,17 @@ public final class MainActivity extends Activity {
         monthlyDayInput.setAdapter(monthlyDayAdapter);
         moduleEditorLayout.addView(monthlyDayInput, matchWrap());
 
+        intervalDaysLabel = label("间隔天数");
+        moduleEditorLayout.addView(intervalDaysLabel);
+        intervalDaysInput = input("");
+        intervalDaysInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        moduleEditorLayout.addView(intervalDaysInput, matchWrap());
+
+        intervalStartDateLabel = label("起始日期");
+        moduleEditorLayout.addView(intervalStartDateLabel);
+        intervalStartDateInput = dateInput("");
+        moduleEditorLayout.addView(intervalStartDateInput, matchWrap());
+
         startTimeInput = timeInput("");
         moduleEditorLayout.addView(label("开始时间"));
         moduleEditorLayout.addView(startTimeInput, matchWrap());
@@ -214,12 +235,6 @@ public final class MainActivity extends Activity {
         enabledInput.setPadding(0, dp(10), 0, dp(10));
         moduleEditorLayout.addView(enabledInput, matchWrap());
 
-        requiresCompletionInput = new CheckBox(this);
-        requiresCompletionInput.setText("持续提醒直到完成");
-        requiresCompletionInput.setTextSize(16);
-        requiresCompletionInput.setPadding(0, dp(2), 0, dp(10));
-        moduleEditorLayout.addView(requiresCompletionInput, matchWrap());
-
         testModeInput = new CheckBox(this);
         testModeInput.setText("测试模式：不限制时间窗口");
         testModeInput.setTextSize(16);
@@ -230,7 +245,7 @@ public final class MainActivity extends Activity {
         checklistRuntimeLayout.setOrientation(LinearLayout.VERTICAL);
         moduleEditorLayout.addView(checklistRuntimeLayout, matchWrap());
 
-        Button completeButton = button("今天完成了");
+        completeButton = button("今天完成了");
         completeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -238,15 +253,6 @@ public final class MainActivity extends Activity {
             }
         });
         moduleEditorLayout.addView(completeButton, matchWrap());
-
-        Button stopButton = button("停用当前模块");
-        stopButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                stopCurrentModule();
-            }
-        });
-        moduleEditorLayout.addView(stopButton, matchWrap());
 
         Button saveButton = button("保存");
         saveButton.setOnClickListener(new View.OnClickListener() {
@@ -491,10 +497,11 @@ public final class MainActivity extends Activity {
         }
         monthlyOrdinalInput.setSelection(monthlyOrdinalSelection(module.monthlyWeekOrdinal));
         monthlyDayInput.setSelection(clamp(module.monthlyDayOfWeek, 0, 6));
+        intervalDaysInput.setText(formatIntervalDays(module.intervalDays));
+        intervalStartDateInput.setText(formatDateOrToday(module.intervalStartEpochDay));
         startTimeInput.setText(formatTimeOrEmpty(module.startHour, module.startMinute));
         endTimeInput.setText(formatTimeOrEmpty(module.endHour, module.endMinute));
         enabledInput.setChecked(module.enabled);
-        requiresCompletionInput.setChecked(module.requiresCompletion || module.usesChecklist);
         testModeInput.setChecked(module.testMode);
         intervalInput.setText(formatIntervalOrEmpty(module.intervalMinutes));
         updateConditionalFields();
@@ -504,14 +511,19 @@ public final class MainActivity extends Activity {
 
     private void updateConditionalFields() {
         if (checklistItemsLabel != null && checklistItemsInput != null && usesChecklistInput != null) {
-            int checklistVisibility = usesChecklistInput.isChecked() ? View.VISIBLE : View.GONE;
+            boolean usesChecklist = usesChecklistInput.isChecked();
+            int checklistVisibility = usesChecklist ? View.VISIBLE : View.GONE;
             checklistItemsLabel.setVisibility(checklistVisibility);
             checklistItemsInput.setVisibility(checklistVisibility);
+            if (completeButton != null) {
+                completeButton.setVisibility(usesChecklist ? View.GONE : View.VISIBLE);
+            }
         }
         if (daysLabel != null && daysRow != null && cycleInput != null) {
             int selectedCycle = cycleInput.getSelectedItemPosition();
             int weeklyVisibility = selectedCycle == 1 ? View.VISIBLE : View.GONE;
             int monthlyVisibility = selectedCycle == 2 ? View.VISIBLE : View.GONE;
+            int intervalDaysVisibility = selectedCycle == 3 ? View.VISIBLE : View.GONE;
             daysLabel.setVisibility(weeklyVisibility);
             if (selectAllDaysButton != null) {
                 selectAllDaysButton.setVisibility(weeklyVisibility);
@@ -523,6 +535,13 @@ public final class MainActivity extends Activity {
                 monthlyOrdinalInput.setVisibility(monthlyVisibility);
                 monthlyDayLabel.setVisibility(monthlyVisibility);
                 monthlyDayInput.setVisibility(monthlyVisibility);
+            }
+            if (intervalDaysLabel != null && intervalDaysInput != null
+                    && intervalStartDateLabel != null && intervalStartDateInput != null) {
+                intervalDaysLabel.setVisibility(intervalDaysVisibility);
+                intervalDaysInput.setVisibility(intervalDaysVisibility);
+                intervalStartDateLabel.setVisibility(intervalDaysVisibility);
+                intervalStartDateInput.setVisibility(intervalDaysVisibility);
             }
         }
     }
@@ -629,18 +648,6 @@ public final class MainActivity extends Activity {
         refreshStatus();
     }
 
-    private void stopCurrentModule() {
-        SopModule module = readModuleFromUi();
-        if (module == null) {
-            return;
-        }
-        module.enabled = false;
-        SopModuleStore.upsert(this, module);
-        ReminderScheduler.cancel(this, module.id);
-        loadSettings();
-        selectModule(module.id);
-        refreshStatus();
-    }
 
     private void confirmDeleteCurrentModule() {
         final SopModule module = SopModuleStore.selectedModule(this);
@@ -751,13 +758,18 @@ public final class MainActivity extends Activity {
             module.cycleType = SopModule.CYCLE_WEEKLY;
         } else if (cyclePosition == 2) {
             module.cycleType = SopModule.CYCLE_MONTHLY;
+        } else if (cyclePosition == 3) {
+            module.cycleType = SopModule.CYCLE_INTERVAL_DAYS;
         } else {
             module.cycleType = SopModule.CYCLE_DAILY;
         }
         module.daysOfWeek = SopModule.CYCLE_WEEKLY.equals(module.cycleType) ? readDays() : SopModule.ALL_DAYS;
         module.monthlyWeekOrdinal = monthlyOrdinalFromSelection(monthlyOrdinalInput.getSelectedItemPosition());
         module.monthlyDayOfWeek = clamp(monthlyDayInput.getSelectedItemPosition(), 0, 6);
-        module.requiresCompletion = requiresCompletionInput.isChecked() || module.usesChecklist;
+        module.intervalDays = parseIntervalDays();
+        LocalDate intervalStartDate = parseDateOrNull(intervalStartDateInput.getText().toString().trim());
+        module.intervalStartEpochDay = intervalStartDate == null ? LocalDate.now().toEpochDay() : intervalStartDate.toEpochDay();
+        module.requiresCompletion = false;
         module.testMode = testModeInput.isChecked();
 
         if (module.name.isEmpty()) {
@@ -771,6 +783,16 @@ public final class MainActivity extends Activity {
         if (SopModule.CYCLE_WEEKLY.equals(module.cycleType) && module.daysOfWeek == 0) {
             setStatus("请至少选择一个每周提醒日。");
             return null;
+        }
+        if (SopModule.CYCLE_INTERVAL_DAYS.equals(module.cycleType)) {
+            if (!isValidIntervalDays(intervalDaysInput.getText().toString().trim())) {
+                setStatus("间隔天数请填写 1-3650 之间的整数。");
+                return null;
+            }
+            if (parseDateOrNull(intervalStartDateInput.getText().toString().trim()) == null) {
+                setStatus("起始日期请使用 yyyy-MM-dd，例如 2026-07-04。");
+                return null;
+            }
         }
         if (module.usesChecklist && module.checklistItems.isEmpty()) {
             setStatus("已启用动作清单，请至少填写一个清单项。");
@@ -869,15 +891,10 @@ public final class MainActivity extends Activity {
                         .append(new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(new Date(moduleNext)));
             }
             boolean completed = SopModuleStore.isCompleted(this, module, now);
-            if (module.requiresCompletion) {
-                moduleText.append(" / 手动完成");
-                if (completed) {
-                    moduleText.append("：当前周期已完成");
-                } else if (ReminderScheduler.occurrenceKey(now, module) != null) {
-                    moduleText.append("：当前周期待完成");
-                }
-            } else if (completed) {
+            if (completed) {
                 moduleText.append(" / 当前周期已完成");
+            } else if (ReminderScheduler.occurrenceKey(now, module) != null) {
+                moduleText.append(" / 当前周期提醒中");
             }
             if (module.usesChecklist) {
                 moduleText.append(" / 清单 ")
@@ -906,6 +923,10 @@ public final class MainActivity extends Activity {
         if (SopModule.CYCLE_MONTHLY.equals(module.cycleType)) {
             return "每月" + monthlyOrdinalText(module.monthlyWeekOrdinal) + dayLabel(module.monthlyDayOfWeek);
         }
+        if (SopModule.CYCLE_INTERVAL_DAYS.equals(module.cycleType)) {
+            return "每隔" + clamp(module.intervalDays, SopModule.MIN_INTERVAL_DAYS, SopModule.MAX_INTERVAL_DAYS)
+                    + "天（从" + formatDateOrToday(module.intervalStartEpochDay) + "开始）";
+        }
         StringBuilder builder = new StringBuilder("每周");
         if (module.daysOfWeek == 0) {
             return "每周（未选择）";
@@ -927,6 +948,9 @@ public final class MainActivity extends Activity {
         }
         if (SopModule.CYCLE_MONTHLY.equals(cycleType)) {
             return 2;
+        }
+        if (SopModule.CYCLE_INTERVAL_DAYS.equals(cycleType)) {
+            return 3;
         }
         return 0;
     }
@@ -1048,6 +1072,54 @@ public final class MainActivity extends Activity {
         return String.valueOf(intervalMinutes);
     }
 
+    private int parseIntervalDays() {
+        try {
+            String raw = intervalDaysInput.getText().toString().trim();
+            if (raw.isEmpty()) {
+                return SopModule.MIN_INTERVAL_DAYS;
+            }
+            int value = Integer.parseInt(raw);
+            return clamp(value, SopModule.MIN_INTERVAL_DAYS, SopModule.MAX_INTERVAL_DAYS);
+        } catch (NumberFormatException ex) {
+            return SopModule.MIN_INTERVAL_DAYS;
+        }
+    }
+
+    private boolean isValidIntervalDays(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed >= SopModule.MIN_INTERVAL_DAYS && parsed <= SopModule.MAX_INTERVAL_DAYS;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
+    }
+
+    private String formatIntervalDays(int intervalDays) {
+        return String.valueOf(clamp(intervalDays, SopModule.MIN_INTERVAL_DAYS, SopModule.MAX_INTERVAL_DAYS));
+    }
+
+    private LocalDate parseDateOrNull(String value) {
+        try {
+            if (value == null || value.trim().isEmpty()) {
+                return null;
+            }
+            return LocalDate.parse(value.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ex) {
+            return null;
+        }
+    }
+
+    private String formatDateOrToday(long epochDay) {
+        try {
+            return LocalDate.ofEpochDay(epochDay).format(DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (RuntimeException ex) {
+            return LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
+    }
+
     private String displayModuleName(SopModule module) {
         if (module == null || module.name == null || module.name.trim().isEmpty()) {
             return "未命名模块";
@@ -1075,6 +1147,46 @@ public final class MainActivity extends Activity {
             }
         });
         return editText;
+    }
+
+    private EditText dateInput(String hint) {
+        EditText editText = input(hint);
+        editText.setInputType(InputType.TYPE_NULL);
+        editText.setFocusable(false);
+        editText.setCursorVisible(false);
+        editText.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showDatePicker((EditText) view);
+            }
+        });
+        return editText;
+    }
+
+    private void showDatePicker(final EditText target) {
+        LocalDate date = parseDateOrNull(target.getText().toString());
+        if (date == null) {
+            date = LocalDate.now();
+        }
+        final DatePicker picker = new DatePicker(this);
+        picker.init(date.getYear(), date.getMonthValue() - 1, date.getDayOfMonth(), null);
+
+        new AlertDialog.Builder(this)
+                .setTitle("选择起始日期")
+                .setView(picker)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        LocalDate selected = LocalDate.of(
+                                picker.getYear(),
+                                picker.getMonth() + 1,
+                                picker.getDayOfMonth()
+                        );
+                        target.setText(selected.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                    }
+                })
+                .show();
     }
 
     private void showTimePicker(final EditText target) {

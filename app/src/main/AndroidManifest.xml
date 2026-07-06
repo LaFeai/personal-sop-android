@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.codex.personalsop"
-    android:versionCode="8"
-    android:versionName="0.1.7">
+    android:versionCode="9"
+    android:versionName="0.1.8">
 
     <uses-sdk
         android:minSdkVersion="26"
@@ -19,7 +19,8 @@
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
