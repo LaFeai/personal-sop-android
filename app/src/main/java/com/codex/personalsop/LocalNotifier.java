@@ -9,11 +9,20 @@ import android.os.Build;
 
 final class LocalNotifier {
     private static final String CHANNEL_ID = "personal_sop_status";
+    private static final int BASE_NOTIFICATION_ID = 2001;
 
     private LocalNotifier() {
     }
 
     static void show(Context context, String title, String text) {
+        show(context, title, text, BASE_NOTIFICATION_ID);
+    }
+
+    static void showReminder(Context context, SopModule module) {
+        show(context, module.name, module.message, notificationId(module));
+    }
+
+    private static void show(Context context, String title, String text, int notificationId) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return;
@@ -25,7 +34,7 @@ final class LocalNotifier {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "提醒状态",
+                    "SOP 提醒",
                     NotificationManager.IMPORTANCE_DEFAULT
             );
             manager.createNotificationChannel(channel);
@@ -37,8 +46,13 @@ final class LocalNotifier {
                 .setContentTitle(title)
                 .setContentText(text)
                 .setAutoCancel(true);
-        manager.notify(2001, builder.build());
+        manager.notify(notificationId, builder.build());
+    }
+
+    private static int notificationId(SopModule module) {
+        if (module == null || module.id == null) {
+            return BASE_NOTIFICATION_ID;
+        }
+        return BASE_NOTIFICATION_ID + Math.abs(module.id.hashCode() % 100000);
     }
 }
-
-

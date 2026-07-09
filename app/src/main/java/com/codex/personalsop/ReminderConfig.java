@@ -14,7 +14,6 @@ final class ReminderConfig {
 
     static final String PREFS = "personal_sop";
     static final String KEY_ENABLED = "enabled";
-    static final String KEY_BARK_ENDPOINT = "bark_endpoint";
     static final String KEY_MESSAGE = "message";
     static final String KEY_INTERVAL_MINUTES = "interval_minutes";
     static final String KEY_NEXT_TRIGGER = "next_trigger";
@@ -43,9 +42,6 @@ final class ReminderConfig {
         return false;
     }
 
-    static String barkEndpoint(Context context) {
-        return prefs(context).getString(KEY_BARK_ENDPOINT, "");
-    }
 
     static String message(Context context) {
         SopModule module = SopModuleStore.selectedModule(context);
@@ -97,4 +93,3 @@ final class ReminderConfig {
         prefs(context).edit().remove(KEY_SEND_LOG).apply();
     }
 }
-

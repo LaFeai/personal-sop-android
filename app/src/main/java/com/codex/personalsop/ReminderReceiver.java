@@ -30,43 +30,23 @@ public final class ReminderReceiver extends BroadcastReceiver {
             ReminderScheduler.scheduleNext(context, module);
             return;
         }
-        ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] 闹钟已唤醒，开始发送 Bark");
 
-        PendingResult pending = goAsync();
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    BarkClient.Result result = BarkClient.send(
-                            ReminderConfig.barkEndpoint(context),
-                            module.name,
-                            module.message
-                    );
-                    ReminderConfig.prefs(context).edit()
-                            .putString(ReminderConfig.KEY_LAST_TRIGGER_STATUS, time + " [" + module.name + "] " + result.message)
-                            .apply();
-                    if (!result.ok) {
-                        ReminderConfig.appendLog(context, "ERROR", "[" + module.name + "] Bark 发送失败：" + result.message);
-                        LocalNotifier.show(context, "Bark 发送失败", result.message);
-                    } else {
-                        ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] " + result.message);
-                    }
-                    SopModule latest = SopModuleStore.find(context, module.id);
-                    if (latest != null && latest.enabled) {
-                        boolean scheduled = ReminderScheduler.scheduleNext(context, latest);
-                        if (!scheduled) {
-                            ReminderConfig.appendLog(context, "ERROR", "[" + module.name + "] 提醒未能继续安排，请检查精确闹钟权限");
-                            LocalNotifier.show(context, "提醒未能继续安排", "请检查精确闹钟权限");
-                        } else {
-                            ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] 已安排下一次提醒");
-                        }
-                    }
-                } finally {
-                    pending.finish();
-                }
+        ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] 闹钟已唤醒，发送本地通知");
+        LocalNotifier.showReminder(context, module);
+        ReminderConfig.prefs(context).edit()
+                .putString(ReminderConfig.KEY_LAST_TRIGGER_STATUS, time + " [" + module.name + "] 本地通知已发送")
+                .apply();
+        ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] 本地通知已发送");
+
+        SopModule latest = SopModuleStore.find(context, module.id);
+        if (latest != null && latest.enabled) {
+            boolean scheduled = ReminderScheduler.scheduleNext(context, latest);
+            if (!scheduled) {
+                ReminderConfig.appendLog(context, "ERROR", "[" + module.name + "] 提醒未能继续安排，请检查精确闹钟权限");
+                LocalNotifier.show(context, "提醒未能继续安排", "请检查精确闹钟权限");
+            } else {
+                ReminderConfig.appendLog(context, "INFO", "[" + module.name + "] 已安排下一次提醒");
             }
-        }, "personal-sop-bark").start();
+        }
     }
 }
-
-

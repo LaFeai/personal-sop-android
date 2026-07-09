@@ -6,7 +6,6 @@ import android.app.AlertDialog;
 import android.app.AlarmManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -41,7 +40,6 @@ import java.util.List;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    private EditText tokenInput;
     private TextView modulesHeader;
     private LinearLayout moduleGrid;
     private LinearLayout moduleEditorLayout;
@@ -108,9 +106,6 @@ public final class MainActivity extends Activity {
         title.setGravity(Gravity.START);
         root.addView(title, matchWrap());
 
-        tokenInput = input("全能消息推送Bark 的 Token");
-        root.addView(label("全局 Token"));
-        root.addView(tokenInput, matchWrap());
 
         modulesHeader = label("模块");
         root.addView(modulesHeader, matchWrap());
@@ -297,7 +292,7 @@ public final class MainActivity extends Activity {
         testButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                testBark();
+                testLocalNotification();
             }
         });
         debugLayout.addView(testButton, matchWrap());
@@ -339,8 +334,6 @@ public final class MainActivity extends Activity {
     }
 
     private void loadSettings() {
-        SharedPreferences prefs = ReminderConfig.prefs(this);
-        tokenInput.setText(prefs.getString(ReminderConfig.KEY_BARK_ENDPOINT, ""));
         modules = SopModuleStore.modules(this);
         renderModuleGrid();
         SopModule selected = SopModuleStore.selectedModule(this);
@@ -562,9 +555,7 @@ public final class MainActivity extends Activity {
         if (module == null) {
             return;
         }
-        String token = tokenInput.getText().toString().trim();
         ReminderConfig.prefs(this).edit()
-                .putString(ReminderConfig.KEY_BARK_ENDPOINT, token)
                 .putBoolean(ReminderConfig.KEY_ENABLED, ReminderConfig.isEnabled(this))
                 .apply();
         SopModuleStore.upsert(this, module);
@@ -593,34 +584,16 @@ public final class MainActivity extends Activity {
                 + new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date(next));
     }
 
-    private void testBark() {
+
+    private void testLocalNotification() {
         SopModule module = readModuleFromUi();
         if (module == null) {
             return;
         }
-        String token = tokenInput.getText().toString().trim();
-        if (token.isEmpty()) {
-            setStatus("请先填写 Token。");
-            return;
-        }
-        setStatus("正在发送测试提醒...");
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                final BarkClient.Result result = BarkClient.send(token, module.name, module.message);
-                ReminderConfig.appendLog(
-                        MainActivity.this,
-                        result.ok ? "INFO" : "ERROR",
-                        "[" + module.name + "] 手动测试：" + result.message
-                );
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        refreshStatus();
-                    }
-                });
-            }
-        }, "sop-module-test").start();
+        LocalNotifier.showReminder(this, module);
+        ReminderConfig.appendLog(this, "INFO", "[" + module.name + "] 测试提醒本地通知已发送");
+        setStatus("已发送测试提醒。请看手机通知和手环是否震动。");
+        refreshStatus();
     }
 
     private void scheduleTwoMinuteTest() {
@@ -628,14 +601,8 @@ public final class MainActivity extends Activity {
         if (module == null) {
             return;
         }
-        String token = tokenInput.getText().toString().trim();
-        if (token.isEmpty()) {
-            setStatus("请先填写 Token。");
-            return;
-        }
         module.enabled = true;
         ReminderConfig.prefs(this).edit()
-                .putString(ReminderConfig.KEY_BARK_ENDPOINT, token)
                 .putString(ReminderConfig.KEY_LAST_TRIGGER_STATUS, "已安排 [" + module.name + "] 2 分钟后测试，等待系统闹钟唤醒")
                 .apply();
         SopModuleStore.upsert(this, module);
